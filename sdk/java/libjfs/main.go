@@ -556,6 +556,22 @@ func push2Graphite(graphite string, pushInterVal time.Duration, registry *promet
 	})
 }
 
+func reloadLimits(store chunk.ChunkStore, conf javaConf) func(*meta.Format) error {
+	uploadLimit := utils.ParseMbpsStr("upload-limit", conf.UploadLimit)
+	downloadLimit := utils.ParseMbpsStr("download-limit", conf.DownloadLimit)
+	return func(format *meta.Format) error {
+		upload, download := format.UploadLimit, format.DownloadLimit
+		if uploadLimit > 0 {
+			upload = uploadLimit
+		}
+		if downloadLimit > 0 {
+			download = downloadLimit
+		}
+		store.UpdateLimit(upload, download)
+		return nil
+	}
+}
+
 //export jfs_init
 func jfs_init(credentialPtr uintptr, count int32, cname, cjsonConf, cuser, group, superuser, supergroup *C.char) int64 {
 	name := C.GoString(cname)
@@ -732,16 +748,7 @@ func jfs_init(credentialPtr uintptr, count int32, cname, cjsonConf, cuser, group
 			logger.Errorf("new session: %s", err)
 			return nil
 		}
-		m.OnReload(func(fmt *meta.Format) error {
-			if chunkConf.UploadLimit > 0 {
-				fmt.UploadLimit = chunkConf.UploadLimit
-			}
-			if chunkConf.DownloadLimit > 0 {
-				fmt.DownloadLimit = chunkConf.DownloadLimit
-			}
-			store.UpdateLimit(fmt.UploadLimit, fmt.DownloadLimit)
-			return nil
-		})
+		m.OnReload(reloadLimits(store, jConf))
 
 		conf := &vfs.Config{
 			Meta:            metaConf,
